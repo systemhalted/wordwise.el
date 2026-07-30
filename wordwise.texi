@@ -1,0 +1,367 @@
+\input texinfo    @c -*- texinfo -*-
+@c %**start of header
+@setfilename wordwise.info
+@settitle Wordwise User Manual
+@documentencoding UTF-8
+@documentlanguage en
+@c %**end of header
+
+@copying
+This manual is for Wordwise version 0.1.0, an Emacs package providing
+Kindle-style inline vocabulary hints.
+
+Copyright @copyright{} 2026 Palak Mathur
+
+@quotation
+This program is free software; you can redistribute it and/or modify it
+under the terms of the GNU General Public License as published by the
+Free Software Foundation, either version 3 of the License, or (at your
+option) any later version.
+@end quotation
+@end copying
+
+@dircategory Emacs misc features
+@direntry
+* Wordwise: (wordwise).         Kindle-style inline vocabulary hints.
+@end direntry
+
+@titlepage
+@title Wordwise User Manual
+@subtitle Kindle-style inline vocabulary hints for Emacs
+@author Palak Mathur
+@page
+@vskip 0pt plus 1filll
+@insertcopying
+@end titlepage
+
+@contents
+
+@ifnottex
+@node Top
+@top Wordwise
+
+Wordwise is a reading aid inspired by (and an homage to) Amazon
+Kindle's @emph{Word Wise} feature.  When @code{wordwise-mode} is
+active, uncommon English words in the buffer get a short dictionary
+definition displayed on a phantom line above the word, so you can keep
+reading without breaking flow to look something up.
+
+@insertcopying
+@end ifnottex
+
+@menu
+* Introduction::                What Wordwise does and how.
+* Installation::                Getting Wordwise into your Emacs.
+* Usage::                       Enabling the mode and the commands.
+* Difficulty Levels::           Tuning how much gets annotated.
+* Customization::               User options and faces.
+* How It Works::                Frequency tiers, DICT lookups, caching.
+* Privacy::                     What leaves your machine.
+* Troubleshooting::             When hints don't appear.
+* Index::                       Variable, function, and concept index.
+@end menu
+
+@node Introduction
+@chapter Introduction
+
+@cindex overview
+
+Wordwise annotates @emph{uncommon} words in reading-oriented buffers
+with one-line dictionary definitions.  The pieces:
+
+@itemize @bullet
+@item
+A bundled frequency list of roughly 9,500 common English words, divided
+into five tiers, decides which words are common enough to need no
+explanation.
+
+@item
+A difficulty level from 1 to 5 (@pxref{Difficulty Levels}) controls how
+aggressively words are annotated.
+
+@item
+Definitions come from @url{https://dict.org} over the DICT protocol,
+fetched on one shared asynchronous connection so that typing and
+scrolling never wait on the network.
+
+@item
+Results are cached, and the cache can persist across Emacs restarts
+through @code{savehist} (@pxref{Caching and persistence}).
+
+@item
+Annotation is restricted to prose: source blocks, inline code, links,
+drawers, and code-like identifiers are skipped, and the mode only
+activates in reading-oriented major modes (Org, Markdown, nov, eww by
+default).
+@end itemize
+
+The name and the interaction pattern are an homage to Amazon Kindle's
+Word Wise feature; this package is not affiliated with Amazon.
+
+@node Installation
+@chapter Installation
+
+@cindex installation
+
+Wordwise requires Emacs 27.1 or later and has no third-party
+dependencies.
+
+With @code{use-package} and @code{package-vc} (Emacs 29+):
+
+@lisp
+(use-package wordwise
+  :vc (:url "https://github.com/systemhalted/wordwise.el"
+       :rev :newest)
+  :bind ("C-c w" . wordwise-mode))
+@end lisp
+
+Interactively:
+
+@example
+M-x package-vc-install RET https://github.com/systemhalted/wordwise.el RET
+@end example
+
+Or manually: clone the repository, add its directory to
+@code{load-path}, and @code{(require 'wordwise)}.
+
+Wordwise defines no keybindings of its own; bind @code{wordwise-mode}
+to a key of your choosing, as in the @code{use-package} example above.
+
+@node Usage
+@chapter Usage
+
+@cindex enabling the mode
+@findex wordwise-mode
+
+Open a buffer in one of the allowed major modes --- by default
+@code{org-mode}, @code{markdown-mode}, @code{gfm-mode},
+@code{nov-mode}, or @code{eww-mode} --- and type @kbd{M-x
+wordwise-mode} (or your keybinding).  Uncommon words in the visible
+part of the buffer are annotated with a small, subdued hint line above
+them.  As you scroll, newly visible text is scanned automatically after
+redisplay settles, in every window that shows the buffer.
+
+Cached definitions appear immediately.  Words seen for the first time
+are queued, deduplicated, and fetched one at a time in the background;
+their hints appear as the answers arrive.
+
+The commands:
+
+@table @kbd
+@item M-x wordwise-mode
+@findex wordwise-mode
+Toggle the hints in the current buffer.  Disabling removes all overlays
+and, when no other buffer has the mode active, shuts down the network
+connection and timers.
+
+@item M-x wordwise-set-difficulty
+@findex wordwise-set-difficulty
+Prompt for a difficulty level (1--5), then rescan the visible region
+with the new setting.  @xref{Difficulty Levels}.
+
+@item M-x wordwise-ignore-word
+@findex wordwise-ignore-word
+Add the word at point to @code{wordwise-ignored-words} and remove its
+annotation.  The word is saved through Customize, so it stays ignored
+in future sessions.
+
+@item M-x wordwise-clear-cache
+@findex wordwise-clear-cache
+Empty the definition cache, cancel in-flight requests, and re-annotate
+the active buffers from scratch.
+@end table
+
+@node Difficulty Levels
+@chapter Difficulty Levels
+
+@cindex difficulty
+@vindex wordwise-difficulty
+
+The user option @code{wordwise-difficulty} (default 3) decides how rare
+a word must be to earn an annotation.  The bundled frequency list
+assigns each of its ~9,500 words to a tier from 1 (most common) to 5
+(least common); words absent from the list entirely are treated as
+rarer still.
+
+@multitable @columnfractions .15 .85
+@headitem Level @tab Annotates
+@item 1 @tab Only words absent from the entire frequency list.
+@item 2 @tab Words outside the top ~10,000.
+@item 3 @tab Words outside the top ~5,000 (the default).
+@item 4 @tab Words outside the top ~3,000.
+@item 5 @tab Anything outside the top ~1,000 --- the most annotations.
+@end multitable
+
+Change it interactively with @kbd{M-x wordwise-set-difficulty}, which
+rescans immediately, or set it in your init file:
+
+@lisp
+(setq wordwise-difficulty 4)
+@end lisp
+
+@node Customization
+@chapter Customization
+
+@cindex customization
+
+All options live in the @code{wordwise} customization group
+(@kbd{M-x customize-group RET wordwise}).
+
+@table @code
+@item wordwise-difficulty
+@vindex wordwise-difficulty
+Annotation aggressiveness, 1--5.  @xref{Difficulty Levels}.
+
+@item wordwise-allowed-modes
+@vindex wordwise-allowed-modes
+Major modes in which the mode may be enabled.  Default:
+@code{(org-mode nov-mode markdown-mode gfm-mode eww-mode)}.  Derived
+modes count.  Enabling the mode elsewhere prints a message and does
+nothing.
+
+@item wordwise-max-hint-length
+@vindex wordwise-max-hint-length
+Maximum length of a hint line, in characters (default 50).  Longer
+definitions are truncated with an ellipsis.
+
+@item wordwise-request-timeout
+@vindex wordwise-request-timeout
+Seconds to wait for one DICT response before treating the request as
+failed (default 5).
+
+@item wordwise-ignored-words
+@vindex wordwise-ignored-words
+Words never to annotate.  Usually maintained with @kbd{M-x
+wordwise-ignore-word}, which saves through Customize; you can also edit
+the list directly.
+@end table
+
+@cindex face
+The hint text uses the face @code{wordwise-hint-face}, which by default
+inherits from @code{shadow} at 70% height.  Customize it to change the
+hint color or size.
+
+@node How It Works
+@chapter How It Works
+
+@menu
+* Prose detection::             What gets scanned, what gets skipped.
+* The DICT client::             One asynchronous connection.
+* Caching and persistence::     At most one lookup per word, ever.
+@end menu
+
+@node Prose detection
+@section Prose detection
+
+@cindex prose detection
+@cindex source blocks
+
+Only words of four or more letters in prose regions are considered.
+Wordwise decides ``prose'' by the face at each word's position: text
+fontified as Org or Markdown source blocks, inline code, drawers,
+property lines, links, tags, or keywords is skipped.  Because the
+scroll hook can reach text before font-lock has fontified it, Wordwise
+fontifies the region first (in buffers that use font-lock) so a source
+block never masquerades as prose.
+
+Words that look like code identifiers are also skipped regardless of
+face: camelCase, ALL-CAPS, and anything containing an underscore or
+slash.
+
+@node The DICT client
+@section The DICT client
+
+@cindex DICT protocol
+@cindex dict.org
+
+Definitions come from @code{dict.org}, TCP port 2628, over the DICT
+protocol.  Wordwise keeps at most one connection open and sends one
+@code{DEFINE} request at a time; the first sense of the first returned
+definition becomes the hint, truncated to
+@code{wordwise-max-hint-length}.
+
+Everything is asynchronous.  A request that exceeds
+@code{wordwise-request-timeout} is treated as failed; a connection
+failure backs off for 60 seconds before retrying, and word lookups that
+failed are retried automatically once the cooldown expires.  Failures
+never block redisplay and never error into your editing.
+
+@node Caching and persistence
+@section Caching and persistence
+
+@cindex cache
+@cindex savehist
+@vindex wordwise-cache
+
+Every answer is cached in the hash table @code{wordwise-cache}: both
+found definitions and confirmed ``no such word'' responses (DICT status
+552).  A word therefore costs at most one network round-trip, ever.
+Connection failures and timeouts are @emph{not} cached persistently ---
+they are retried after a short cooldown in the same session.
+
+If you enable @code{savehist-mode}, Wordwise registers the cache with
+@code{savehist-additional-variables}, so definitions persist across
+Emacs restarts in your @file{history} file.  Note that the
+registration happens when the wordwise library loads; if you defer
+loading (for example with @code{use-package}'s @code{:bind}) and want
+the persisted cache preserved even in sessions where you never toggle
+the mode, add the registration eagerly in your init file:
+
+@lisp
+(with-eval-after-load 'savehist
+  (add-to-list 'savehist-additional-variables 'wordwise-cache))
+@end lisp
+
+@kbd{M-x wordwise-clear-cache} flushes everything explicitly.
+
+@node Privacy
+@chapter Privacy
+
+@cindex privacy
+
+Every word that Wordwise looks up is sent to @code{dict.org} in plain
+text over an unencrypted TCP connection.  The words come from the
+buffers you enable the mode in, filtered to uncommon vocabulary.  Do
+not enable @code{wordwise-mode} in buffers whose vocabulary you
+consider sensitive, and be aware that a network observer could see the
+looked-up words.
+
+Nothing else leaves your machine: the frequency list is bundled, and
+the cache is stored locally.
+
+@node Troubleshooting
+@chapter Troubleshooting
+
+@cindex troubleshooting
+
+@table @asis
+@item ``Wordwise not available in @var{mode}''
+The current major mode is not in @code{wordwise-allowed-modes}.  Add it
+if you really want annotations there.
+
+@item No hints appear at all
+Check that the words on screen are actually uncommon at your difficulty
+(@pxref{Difficulty Levels}) --- at the default level, everything in the
+top ~5,000 English words is silently skipped.  Then check the echo area
+for ``Wordwise DICT unavailable'': without a network path to dict.org
+port 2628, only previously cached words can be annotated.  Wordwise
+retries the connection every 60 seconds.
+
+@item Hints appear on code
+The skip list is face-based (see @code{wordwise--skip-faces}); a mode
+that fontifies code with faces Wordwise does not know about will leak
+through.  Report the mode and face, or add the face to the list.
+
+@item Hints are stale or wrong
+Definitions are cached indefinitely, including ``no definition found''.
+@kbd{M-x wordwise-clear-cache} refetches everything.
+@end table
+
+@node Index
+@unnumbered Index
+
+@printindex cp
+@printindex vr
+@printindex fn
+
+@bye

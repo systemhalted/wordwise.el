@@ -1,0 +1,390 @@
+This is wordwise.info, produced by makeinfo version 7.1 from
+wordwise.texi.
+
+This manual is for Wordwise version 0.1.0, an Emacs package providing
+Kindle-style inline vocabulary hints.
+
+   Copyright © 2026 Palak Mathur
+
+     This program is free software; you can redistribute it and/or
+     modify it under the terms of the GNU General Public License as
+     published by the Free Software Foundation, either version 3 of the
+     License, or (at your option) any later version.
+INFO-DIR-SECTION Emacs misc features
+START-INFO-DIR-ENTRY
+* Wordwise: (wordwise).         Kindle-style inline vocabulary hints.
+END-INFO-DIR-ENTRY
+
+
+File: wordwise.info,  Node: Top,  Next: Introduction,  Up: (dir)
+
+Wordwise
+********
+
+Wordwise is a reading aid inspired by (and an homage to) Amazon Kindle's
+_Word Wise_ feature.  When ‘wordwise-mode’ is active, uncommon English
+words in the buffer get a short dictionary definition displayed on a
+phantom line above the word, so you can keep reading without breaking
+flow to look something up.
+
+   This manual is for Wordwise version 0.1.0, an Emacs package providing
+Kindle-style inline vocabulary hints.
+
+   Copyright © 2026 Palak Mathur
+
+     This program is free software; you can redistribute it and/or
+     modify it under the terms of the GNU General Public License as
+     published by the Free Software Foundation, either version 3 of the
+     License, or (at your option) any later version.
+
+* Menu:
+
+* Introduction::                What Wordwise does and how.
+* Installation::                Getting Wordwise into your Emacs.
+* Usage::                       Enabling the mode and the commands.
+* Difficulty Levels::           Tuning how much gets annotated.
+* Customization::               User options and faces.
+* How It Works::                Frequency tiers, DICT lookups, caching.
+* Privacy::                     What leaves your machine.
+* Troubleshooting::             When hints don't appear.
+* Index::                       Variable, function, and concept index.
+
+
+File: wordwise.info,  Node: Introduction,  Next: Installation,  Prev: Top,  Up: Top
+
+1 Introduction
+**************
+
+Wordwise annotates _uncommon_ words in reading-oriented buffers with
+one-line dictionary definitions.  The pieces:
+
+   • A bundled frequency list of roughly 9,500 common English words,
+     divided into five tiers, decides which words are common enough to
+     need no explanation.
+
+   • A difficulty level from 1 to 5 (*note Difficulty Levels::) controls
+     how aggressively words are annotated.
+
+   • Definitions come from <https://dict.org> over the DICT protocol,
+     fetched on one shared asynchronous connection so that typing and
+     scrolling never wait on the network.
+
+   • Results are cached, and the cache can persist across Emacs restarts
+     through ‘savehist’ (*note Caching and persistence::).
+
+   • Annotation is restricted to prose: source blocks, inline code,
+     links, drawers, and code-like identifiers are skipped, and the mode
+     only activates in reading-oriented major modes (Org, Markdown, nov,
+     eww by default).
+
+   The name and the interaction pattern are an homage to Amazon Kindle's
+Word Wise feature; this package is not affiliated with Amazon.
+
+
+File: wordwise.info,  Node: Installation,  Next: Usage,  Prev: Introduction,  Up: Top
+
+2 Installation
+**************
+
+Wordwise requires Emacs 27.1 or later and has no third-party
+dependencies.
+
+   With ‘use-package’ and ‘package-vc’ (Emacs 29+):
+
+     (use-package wordwise
+       :vc (:url "https://github.com/systemhalted/wordwise.el"
+            :rev :newest)
+       :bind ("C-c w" . wordwise-mode))
+
+   Interactively:
+
+     M-x package-vc-install RET https://github.com/systemhalted/wordwise.el RET
+
+   Or manually: clone the repository, add its directory to ‘load-path’,
+and ‘(require 'wordwise)’.
+
+   Wordwise defines no keybindings of its own; bind ‘wordwise-mode’ to a
+key of your choosing, as in the ‘use-package’ example above.
+
+
+File: wordwise.info,  Node: Usage,  Next: Difficulty Levels,  Prev: Installation,  Up: Top
+
+3 Usage
+*******
+
+Open a buffer in one of the allowed major modes -- by default
+‘org-mode’, ‘markdown-mode’, ‘gfm-mode’, ‘nov-mode’, or ‘eww-mode’ --
+and type ‘M-x wordwise-mode’ (or your keybinding).  Uncommon words in
+the visible part of the buffer are annotated with a small, subdued hint
+line above them.  As you scroll, newly visible text is scanned
+automatically after redisplay settles, in every window that shows the
+buffer.
+
+   Cached definitions appear immediately.  Words seen for the first time
+are queued, deduplicated, and fetched one at a time in the background;
+their hints appear as the answers arrive.
+
+   The commands:
+
+‘M-x wordwise-mode’
+     Toggle the hints in the current buffer.  Disabling removes all
+     overlays and, when no other buffer has the mode active, shuts down
+     the network connection and timers.
+
+‘M-x wordwise-set-difficulty’
+     Prompt for a difficulty level (1-5), then rescan the visible region
+     with the new setting.  *Note Difficulty Levels::.
+
+‘M-x wordwise-ignore-word’
+     Add the word at point to ‘wordwise-ignored-words’ and remove its
+     annotation.  The word is saved through Customize, so it stays
+     ignored in future sessions.
+
+‘M-x wordwise-clear-cache’
+     Empty the definition cache, cancel in-flight requests, and
+     re-annotate the active buffers from scratch.
+
+
+File: wordwise.info,  Node: Difficulty Levels,  Next: Customization,  Prev: Usage,  Up: Top
+
+4 Difficulty Levels
+*******************
+
+The user option ‘wordwise-difficulty’ (default 3) decides how rare a
+word must be to earn an annotation.  The bundled frequency list assigns
+each of its ~9,500 words to a tier from 1 (most common) to 5 (least
+common); words absent from the list entirely are treated as rarer still.
+
+Level       Annotates
+--------------------------------------------------------------------------
+1           Only words absent from the entire frequency list.
+2           Words outside the top ~10,000.
+3           Words outside the top ~5,000 (the default).
+4           Words outside the top ~3,000.
+5           Anything outside the top ~1,000 -- the most annotations.
+
+   Change it interactively with ‘M-x wordwise-set-difficulty’, which
+rescans immediately, or set it in your init file:
+
+     (setq wordwise-difficulty 4)
+
+
+File: wordwise.info,  Node: Customization,  Next: How It Works,  Prev: Difficulty Levels,  Up: Top
+
+5 Customization
+***************
+
+All options live in the ‘wordwise’ customization group (‘M-x
+customize-group RET wordwise’).
+
+‘wordwise-difficulty’
+     Annotation aggressiveness, 1-5.  *Note Difficulty Levels::.
+
+‘wordwise-allowed-modes’
+     Major modes in which the mode may be enabled.  Default: ‘(org-mode
+     nov-mode markdown-mode gfm-mode eww-mode)’.  Derived modes count.
+     Enabling the mode elsewhere prints a message and does nothing.
+
+‘wordwise-max-hint-length’
+     Maximum length of a hint line, in characters (default 50).  Longer
+     definitions are truncated with an ellipsis.
+
+‘wordwise-request-timeout’
+     Seconds to wait for one DICT response before treating the request
+     as failed (default 5).
+
+‘wordwise-ignored-words’
+     Words never to annotate.  Usually maintained with ‘M-x
+     wordwise-ignore-word’, which saves through Customize; you can also
+     edit the list directly.
+
+   The hint text uses the face ‘wordwise-hint-face’, which by default
+inherits from ‘shadow’ at 70% height.  Customize it to change the hint
+color or size.
+
+
+File: wordwise.info,  Node: How It Works,  Next: Privacy,  Prev: Customization,  Up: Top
+
+6 How It Works
+**************
+
+* Menu:
+
+* Prose detection::             What gets scanned, what gets skipped.
+* The DICT client::             One asynchronous connection.
+* Caching and persistence::     At most one lookup per word, ever.
+
+
+File: wordwise.info,  Node: Prose detection,  Next: The DICT client,  Up: How It Works
+
+6.1 Prose detection
+===================
+
+Only words of four or more letters in prose regions are considered.
+Wordwise decides "prose" by the face at each word's position: text
+fontified as Org or Markdown source blocks, inline code, drawers,
+property lines, links, tags, or keywords is skipped.  Because the scroll
+hook can reach text before font-lock has fontified it, Wordwise
+fontifies the region first (in buffers that use font-lock) so a source
+block never masquerades as prose.
+
+   Words that look like code identifiers are also skipped regardless of
+face: camelCase, ALL-CAPS, and anything containing an underscore or
+slash.
+
+
+File: wordwise.info,  Node: The DICT client,  Next: Caching and persistence,  Prev: Prose detection,  Up: How It Works
+
+6.2 The DICT client
+===================
+
+Definitions come from ‘dict.org’, TCP port 2628, over the DICT protocol.
+Wordwise keeps at most one connection open and sends one ‘DEFINE’
+request at a time; the first sense of the first returned definition
+becomes the hint, truncated to ‘wordwise-max-hint-length’.
+
+   Everything is asynchronous.  A request that exceeds
+‘wordwise-request-timeout’ is treated as failed; a connection failure
+backs off for 60 seconds before retrying, and word lookups that failed
+are retried automatically once the cooldown expires.  Failures never
+block redisplay and never error into your editing.
+
+
+File: wordwise.info,  Node: Caching and persistence,  Prev: The DICT client,  Up: How It Works
+
+6.3 Caching and persistence
+===========================
+
+Every answer is cached in the hash table ‘wordwise-cache’: both found
+definitions and confirmed "no such word" responses (DICT status 552).  A
+word therefore costs at most one network round-trip, ever.  Connection
+failures and timeouts are _not_ cached persistently -- they are retried
+after a short cooldown in the same session.
+
+   If you enable ‘savehist-mode’, Wordwise registers the cache with
+‘savehist-additional-variables’, so definitions persist across Emacs
+restarts in your ‘history’ file.  Note that the registration happens
+when the wordwise library loads; if you defer loading (for example with
+‘use-package’'s ‘:bind’) and want the persisted cache preserved even in
+sessions where you never toggle the mode, add the registration eagerly
+in your init file:
+
+     (with-eval-after-load 'savehist
+       (add-to-list 'savehist-additional-variables 'wordwise-cache))
+
+   ‘M-x wordwise-clear-cache’ flushes everything explicitly.
+
+
+File: wordwise.info,  Node: Privacy,  Next: Troubleshooting,  Prev: How It Works,  Up: Top
+
+7 Privacy
+*********
+
+Every word that Wordwise looks up is sent to ‘dict.org’ in plain text
+over an unencrypted TCP connection.  The words come from the buffers you
+enable the mode in, filtered to uncommon vocabulary.  Do not enable
+‘wordwise-mode’ in buffers whose vocabulary you consider sensitive, and
+be aware that a network observer could see the looked-up words.
+
+   Nothing else leaves your machine: the frequency list is bundled, and
+the cache is stored locally.
+
+
+File: wordwise.info,  Node: Troubleshooting,  Next: Index,  Prev: Privacy,  Up: Top
+
+8 Troubleshooting
+*****************
+
+"Wordwise not available in MODE"
+     The current major mode is not in ‘wordwise-allowed-modes’.  Add it
+     if you really want annotations there.
+
+No hints appear at all
+     Check that the words on screen are actually uncommon at your
+     difficulty (*note Difficulty Levels::) -- at the default level,
+     everything in the top ~5,000 English words is silently skipped.
+     Then check the echo area for "Wordwise DICT unavailable": without a
+     network path to dict.org port 2628, only previously cached words
+     can be annotated.  Wordwise retries the connection every 60
+     seconds.
+
+Hints appear on code
+     The skip list is face-based (see ‘wordwise--skip-faces’); a mode
+     that fontifies code with faces Wordwise does not know about will
+     leak through.  Report the mode and face, or add the face to the
+     list.
+
+Hints are stale or wrong
+     Definitions are cached indefinitely, including "no definition
+     found".  ‘M-x wordwise-clear-cache’ refetches everything.
+
+
+File: wordwise.info,  Node: Index,  Prev: Troubleshooting,  Up: Top
+
+Index
+*****
+
+ [index ]
+* Menu:
+
+* cache:                                 Caching and persistence.
+                                                               (line  6)
+* customization:                         Customization.        (line  6)
+* DICT protocol:                         The DICT client.      (line  6)
+* dict.org:                              The DICT client.      (line  6)
+* difficulty:                            Difficulty Levels.    (line  6)
+* enabling the mode:                     Usage.                (line  6)
+* face:                                  Customization.        (line 30)
+* installation:                          Installation.         (line  6)
+* overview:                              Introduction.         (line  6)
+* privacy:                               Privacy.              (line  6)
+* prose detection:                       Prose detection.      (line  6)
+* savehist:                              Caching and persistence.
+                                                               (line  6)
+* source blocks:                         Prose detection.      (line  6)
+* troubleshooting:                       Troubleshooting.      (line  6)
+
+ [index ]
+* Menu:
+
+* wordwise-allowed-modes:                Customization.        (line 13)
+* wordwise-cache:                        Caching and persistence.
+                                                               (line  6)
+* wordwise-difficulty:                   Difficulty Levels.    (line  6)
+* wordwise-difficulty <1>:               Customization.        (line 10)
+* wordwise-ignored-words:                Customization.        (line 26)
+* wordwise-max-hint-length:              Customization.        (line 18)
+* wordwise-request-timeout:              Customization.        (line 22)
+
+ [index ]
+* Menu:
+
+* wordwise-clear-cache:                  Usage.                (line 35)
+* wordwise-ignore-word:                  Usage.                (line 30)
+* wordwise-mode:                         Usage.                (line  6)
+* wordwise-mode <1>:                     Usage.                (line 21)
+* wordwise-set-difficulty:               Usage.                (line 26)
+
+
+
+Tag Table:
+Node: Top629
+Node: Introduction2021
+Node: Installation3243
+Node: Usage4008
+Node: Difficulty Levels5484
+Node: Customization6436
+Node: How It Works7654
+Node: Prose detection7985
+Node: The DICT client8708
+Node: Caching and persistence9471
+Node: Privacy10595
+Node: Troubleshooting11168
+Node: Index12301
+
+End Tag Table
+
+
+Local Variables:
+coding: utf-8
+End:
