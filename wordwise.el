@@ -4,7 +4,7 @@
 
 ;; Author: Palak Mathur <palakmathur@gmail.com>
 ;; URL: https://github.com/systemhalted/wordwise.el
-;; Version: 0.1.0
+;; Version: 0.1.1
 ;; Package-Requires: ((emacs "27.1"))
 ;; Keywords: convenience, wp, hypermedia
 
@@ -567,42 +567,74 @@ RESULT is a definition string, `missing', or `error'."
 
 ;; --- Overlay management ---
 ;;
-;; Two overlays per annotated word:
-;; 1. Display overlay at the visual-line beginning — its before-string
-;;    creates a phantom hint line, pixel-aligned to the word's screen
-;;    position via (space :align-to) so it works with proportional fonts
-;;    and wrapped lines.
-;; 2. Marker overlay spanning the word — for duplicate detection.
+;; One display overlay per visual line plus one marker overlay per word:
+;; 1. The display overlay sits at the visual-line beginning; its
+;;    before-string is the phantom hint line.  All annotated words on
+;;    that visual line share it — each contributes an (X UNIT HINT)
+;;    entry to its `wordwise-hints' property and the line is re-rendered,
+;;    so hints sit side by side instead of stacking one line each.
+;;    Hints are pixel-aligned to their word via (space :align-to) so
+;;    alignment survives proportional fonts and wrapped lines.
+;; 2. The marker overlay spans the word — for duplicate detection.
+
+(defun wordwise--display-overlay-at (pos)
+  "Return the Wordwise hint-line overlay starting at POS, if any."
+  (seq-find (lambda (ov)
+              (and (overlay-get ov 'wordwise-hints)
+                   (= (overlay-start ov) pos)))
+            (overlays-in pos (min (1+ pos) (point-max)))))
+
+(defun wordwise--hint-line (hints)
+  "Render HINTS, a list of (X UNIT HINT) entries, as one phantom line.
+X is a pixel offset when UNIT is `px' (from `posn-x-y'), or a character
+column when UNIT is `col' (the no-window fallback).  Hints are laid out
+left to right in word order; each is pushed to its word's position with
+\(space :align-to), which collapses to nothing when the previous hint
+already reached past that point, leaving a plain two-space gap."
+  (let ((sorted (sort (copy-sequence hints)
+                      (lambda (a b) (< (car a) (car b)))))
+        (parts nil))
+    (dolist (entry sorted)
+      (pcase-let ((`(,x ,unit ,hint) entry))
+        (when parts (push "  " parts))
+        (push (propertize " " 'display
+                          (if (eq unit 'px)
+                              `(space :align-to (,x))
+                            `(space :align-to ,x)))
+              parts)
+        (push (propertize hint 'face 'wordwise-hint-face) parts)))
+    (apply #'concat (nreverse (cons "\n" parts)))))
 
 (defun wordwise--make-overlay (beg end hint &optional window)
-  "Create Wordwise overlays for BEG..END with HINT, measured in WINDOW."
+  "Add HINT for the word BEG..END to its line's phantom hint line.
+WINDOW supplies display measurements for pixel alignment; without a
+window position the hint falls back to character-column alignment."
   (save-excursion
     (goto-char beg)
     (let* ((visual-bol (progn (vertical-motion 0 window) (point)))
-           ;; Pixel-accurate alignment via posn-at-point; falls back to
-           ;; character column when no window position is available.
            (posn (posn-at-point beg window))
            (x-pixel (when posn (car (posn-x-y posn))))
-           (padding (if x-pixel
-                        (propertize " " 'display
-                                    `(space :align-to (,x-pixel)))
-                      (make-string (- beg visual-bol) ?\s)))
-           (hint-line (concat padding
-                              (propertize hint
-                                          'face 'wordwise-hint-face)
-                              "\n"))
-           (display-ov (make-overlay visual-bol
-                                     (min (1+ visual-bol) (point-max))))
-           (marker-ov (make-overlay beg end nil t nil)))
-      (overlay-put display-ov 'before-string hint-line)
+           (entry (if x-pixel
+                      (list x-pixel 'px hint)
+                    (list (- beg visual-bol) 'col hint)))
+           (display-ov (or (wordwise--display-overlay-at visual-bol)
+                           (make-overlay visual-bol
+                                         (min (1+ visual-bol) (point-max)))))
+           (marker-ov (make-overlay beg end nil t nil))
+           (hints (cons entry (overlay-get display-ov 'wordwise-hints))))
       (overlay-put display-ov 'wordwise t)
+      (overlay-put display-ov 'wordwise-hints hints)
+      (overlay-put display-ov 'before-string (wordwise--hint-line hints))
       (overlay-put marker-ov 'wordwise t)
+      (overlay-put marker-ov 'wordwise-marker t)
       (overlay-put marker-ov 'evaporate t))))
 
 (defun wordwise--already-annotated-p (beg end)
-  "Return non-nil if a Wordwise marker overlay spans BEG..END."
+  "Return non-nil if a Wordwise marker overlay spans BEG..END.
+Only marker overlays count: the shared display overlay at the visual
+line's beginning must not make the line's first word look annotated."
   (seq-find (lambda (ov)
-              (and (overlay-get ov 'wordwise)
+              (and (overlay-get ov 'wordwise-marker)
                    (> (- (overlay-end ov) (overlay-start ov)) 0)))
             (overlays-in beg end)))
 

@@ -1,11 +1,14 @@
 EMACS ?= emacs
 
-.PHONY: all compile info clean
+.PHONY: all compile test info clean
 
-all: compile info
+all: compile test info
 
 compile:
 	$(EMACS) --batch -Q -L . -f batch-byte-compile wordwise.el wordwise-common-words.el
+
+test:
+	$(EMACS) --batch -Q -L . -l wordwise-test.el -f ert-run-tests-batch-and-exit
 
 # The built manual (wordwise.info) and its dir entry are committed so
 # that package-vc checkouts and load-path installs get C-h R support
