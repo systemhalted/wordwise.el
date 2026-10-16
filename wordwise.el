@@ -170,7 +170,8 @@ cold-start annotation.  Flush explicitly with `wordwise-clear-cache'.")
     org-link org-tag org-code org-verbatim
     markdown-pre-face markdown-inline-code-face
     markdown-language-keyword-face markdown-code-face
-    markdown-url-face)
+    markdown-url-face
+    shr-link shr-code)
   "Faces marking non-prose regions that Wordwise skips.")
 
 (defvar-local wordwise--scan-timer nil
@@ -576,6 +577,11 @@ RESULT is a definition string, `missing', or `error'."
 ;;    Hints are pixel-aligned to their word via (space :align-to) so
 ;;    alignment survives proportional fonts and wrapped lines.
 ;; 2. The marker overlay spans the word — for duplicate detection.
+;;
+;; Both evaporate: nov (on chapter change) and eww (on history
+;; navigation) erase the buffer without removing overlays, and an empty
+;; display overlay would otherwise keep drawing a stale hint line at the
+;; top of the new page.
 
 (defun wordwise--display-overlay-at (pos)
   "Return the Wordwise hint-line overlay starting at POS, if any."
@@ -623,6 +629,7 @@ window position the hint falls back to character-column alignment."
            (marker-ov (make-overlay beg end nil t nil))
            (hints (cons entry (overlay-get display-ov 'wordwise-hints))))
       (overlay-put display-ov 'wordwise t)
+      (overlay-put display-ov 'evaporate t)
       (overlay-put display-ov 'wordwise-hints hints)
       (overlay-put display-ov 'before-string (wordwise--hint-line hints))
       (overlay-put marker-ov 'wordwise t)
@@ -704,6 +711,31 @@ waiting for network output.  WINDOW supplies display measurements."
       (when (buffer-live-p buf)
         (wordwise--schedule-scan buf)))))
 
+;; --- Re-render hooks ---
+
+(defconst wordwise--render-hooks
+  '(eww-after-render-hook nov-post-html-render-hook)
+  "Hooks run after a reading mode replaces the buffer with a new page.
+A fresh render does not reliably trigger `window-scroll-functions',
+so without these the new page stays unannotated until the next scroll.")
+
+(defun wordwise--on-render ()
+  "Drop hints from the previous page and schedule a scan of the new one."
+  (wordwise--remove-overlays)
+  (wordwise--schedule-scan (current-buffer)))
+
+(defun wordwise--add-hooks ()
+  "Install Wordwise's buffer-local scroll and render hooks."
+  (add-hook 'window-scroll-functions #'wordwise--on-scroll nil t)
+  (dolist (hook wordwise--render-hooks)
+    (add-hook hook #'wordwise--on-render nil t)))
+
+(defun wordwise--remove-hooks ()
+  "Remove Wordwise's buffer-local scroll and render hooks."
+  (remove-hook 'window-scroll-functions #'wordwise--on-scroll t)
+  (dolist (hook wordwise--render-hooks)
+    (remove-hook hook #'wordwise--on-render t)))
+
 ;; --- Minor mode ---
 
 ;;;###autoload
@@ -719,15 +751,13 @@ word at a time, without waiting in redisplay.  Difficulty is controlled by
   (if wordwise-mode
       (if (apply #'derived-mode-p wordwise-allowed-modes)
           (progn
-            (add-hook 'window-scroll-functions
-                      #'wordwise--on-scroll nil t)
+            (wordwise--add-hooks)
             (wordwise--scan-visible)
             (message "Wordwise enabled (difficulty %d)"
                      wordwise-difficulty))
         (setq wordwise-mode nil)
         (message "Wordwise not available in %s" major-mode))
-    (remove-hook 'window-scroll-functions
-                 #'wordwise--on-scroll t)
+    (wordwise--remove-hooks)
     (wordwise--cancel-scan-timer)
     (wordwise--remove-buffer-demand (current-buffer))
     (wordwise--remove-overlays)
@@ -777,8 +807,7 @@ Customize so it persists across sessions."
 ;; after the transient state reset above.
 (dolist (buf (wordwise--active-buffers))
   (with-current-buffer buf
-    (add-hook 'window-scroll-functions
-              #'wordwise--on-scroll nil t)
+    (wordwise--add-hooks)
     (wordwise--schedule-scan buf)))
 
 (provide 'wordwise)

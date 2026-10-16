@@ -279,5 +279,57 @@
       (should (> wordwise--retry-at (float-time)))
       (should retry-scheduled))))
 
+;; --- Re-rendered buffers (nov, eww) ---
+
+(ert-deftest wordwise-erase-buffer-drops-hint-lines ()
+  "Erasing the buffer, as nov and eww history navigation do, leaves no hints."
+  (with-temp-buffer
+    (insert "alpha bravo\ncharlie delta\n")
+    (wordwise--make-overlay 7 12 "first hint")
+    (wordwise--make-overlay 21 26 "second hint")
+    (should (= (length (wordwise-test--hint-lines)) 2))
+    (erase-buffer)
+    (insert "a new page\n")
+    (should-not (wordwise-test--hint-lines))
+    (should-not (overlays-in (point-min) (point-max)))))
+
+(ert-deftest wordwise-skips-shr-links-and-code ()
+  "Link and inline-code text rendered by shr is not treated as prose."
+  (with-temp-buffer
+    (insert (propertize "ephemeral" 'face '(shr-text shr-link))
+            " "
+            (propertize "obfuscate" 'face 'shr-code)
+            " "
+            (propertize "perfunctory" 'face 'shr-text))
+    (should-not (wordwise--in-prose-p 1))
+    (should-not (wordwise--in-prose-p 11))
+    (should (wordwise--in-prose-p 21))))
+
+(ert-deftest wordwise-render-hook-clears-and-rescans ()
+  "A page render drops the previous page's hints and schedules a scan."
+  (with-temp-buffer
+    (insert "alpha bravo\n")
+    (wordwise--make-overlay 7 12 "stale hint")
+    (let (scheduled)
+      (cl-letf (((symbol-function 'wordwise--schedule-scan)
+                 (lambda (buffer &optional _delay)
+                   (setq scheduled buffer))))
+        (wordwise--on-render))
+      (should (eq scheduled (current-buffer)))
+      (should-not (overlays-in (point-min) (point-max))))))
+
+(ert-deftest wordwise-mode-installs-render-hooks-locally ()
+  "Enabling the mode hooks page renders in this buffer only; disabling unhooks."
+  (with-temp-buffer
+    (let ((wordwise-allowed-modes '(fundamental-mode)))
+      (cl-letf (((symbol-function 'message) #'ignore))
+        (wordwise-mode 1)
+        (dolist (hook wordwise--render-hooks)
+          (should (memq #'wordwise--on-render (symbol-value hook)))
+          (should-not (memq #'wordwise--on-render (default-value hook))))
+        (wordwise-mode -1)
+        (dolist (hook wordwise--render-hooks)
+          (should-not (memq #'wordwise--on-render (symbol-value hook))))))))
+
 (provide 'wordwise-test)
 ;;; wordwise-test.el ends here
