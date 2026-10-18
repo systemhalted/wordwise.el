@@ -26,9 +26,11 @@ with Amazon.
   at most one network round-trip ever.
 - Annotation is restricted to prose regions of reading-oriented major
   modes (`org-mode`, `nov-mode`, `markdown-mode`, `gfm-mode`,
-  `eww-mode` by default — see `wordwise-allowed-modes`). Source blocks,
-  inline code, links, drawers, and code-like identifiers (camelCase,
-  ALL_CAPS, snake_case) are skipped.
+  `eww-mode` by default — see `wordwise-allowed-modes`). "Prose" is
+  decided by the face at each word: source and example blocks, inline
+  code and verbatim, links, drawers, and keyword lines are skipped, as
+  are code-like identifiers (camelCase, ALL_CAPS, snake_case). Plain
+  paragraphs and Org quote, verse, and center blocks count as prose.
 
 **Privacy note:** annotated words are sent to dict.org in plain text
 over TCP. Don't enable the mode in buffers whose vocabulary you

@@ -222,11 +222,13 @@ File: wordwise.info,  Node: Prose detection,  Next: The DICT client,  Up: How It
 
 Only words of four or more letters in prose regions are considered.
 Wordwise decides "prose" by the face at each word's position: text
-fontified as Org or Markdown source blocks, inline code, drawers,
-property lines, links, tags, or keywords is skipped.  Because the scroll
-hook can reach text before font-lock has fontified it, Wordwise
-fontifies the region first (in buffers that use font-lock) so a source
-block never masquerades as prose.
+fontified as Org source or example blocks, Markdown code blocks, inline
+code or verbatim, drawers, property lines, links, tags, or keywords is
+skipped.  Org quote, verse, and center blocks hold prose and are
+annotated like ordinary paragraphs.  Because the scroll hook can reach
+text before font-lock has fontified it, Wordwise fontifies the region
+first (in buffers that use font-lock) so a source block never
+masquerades as prose.
 
    Words that look like code identifiers are also skipped regardless of
 face: camelCase, ALL-CAPS, and anything containing an underscore or
@@ -376,11 +378,11 @@ Node: Difficulty Levels5484
 Node: Customization6436
 Node: How It Works7654
 Node: Prose detection7985
-Node: The DICT client8708
-Node: Caching and persistence9471
-Node: Privacy10595
-Node: Troubleshooting11168
-Node: Index12301
+Node: The DICT client8833
+Node: Caching and persistence9596
+Node: Privacy10720
+Node: Troubleshooting11293
+Node: Index12426
 
 End Tag Table
 
