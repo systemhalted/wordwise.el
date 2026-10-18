@@ -258,8 +258,10 @@ hint color or size.
 
 Only words of four or more letters in prose regions are considered.
 Wordwise decides ``prose'' by the face at each word's position: text
-fontified as Org or Markdown source blocks, inline code, drawers,
-property lines, links, tags, or keywords is skipped.  Because the
+fontified as Org source or example blocks, Markdown code blocks,
+inline code or verbatim, drawers, property lines, links, tags, or
+keywords is skipped.  Org quote, verse, and center blocks hold prose
+and are annotated like ordinary paragraphs.  Because the
 scroll hook can reach text before font-lock has fontified it, Wordwise
 fontifies the region first (in buffers that use font-lock) so a source
 block never masquerades as prose.
