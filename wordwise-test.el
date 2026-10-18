@@ -167,6 +167,21 @@
     (should (eq 'missing (gethash "neologism" wordwise-cache)))
     (should (eq 'miss (gethash "neologism" wordwise--pending 'miss)))))
 
+(ert-deftest wordwise-in-prose-p-follows-face-inheritance ()
+  "Faces that inherit from a skip face are not prose."
+  (with-temp-buffer
+    (insert "word")
+    (dolist (case '((nil . t)
+                    (org-quote . t)
+                    (org-block . nil)
+                    ((org-block) . nil)
+                    ((:inherit (org-block)) . nil)
+                    ((:inherit org-block :extend t) . nil)
+                    ((bold (:inherit org-code)) . nil)))
+      (put-text-property (point-min) (point-max) 'face (car case))
+      (should (eq (cdr case)
+                  (and (wordwise--in-prose-p (point-min)) t))))))
+
 (ert-deftest wordwise-scan-queues-cold-and-renders-warm-words ()
   "Scanning queues uncached words and renders cached ones immediately."
   (wordwise-test--with-state

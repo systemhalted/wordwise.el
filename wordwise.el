@@ -198,13 +198,19 @@ cold-start annotation.  Flush explicitly with `wordwise-clear-cache'.")
   "Return non-nil if POS is in a prose region suitable for annotation.
 Checks the face text property at POS; non-prose faces (source blocks,
 inline code, drawers, links, etc.) are listed in `--skip-faces'."
-  (let* ((face (get-text-property pos 'face))
-         (faces (cond ((null face) nil)
-                      ((listp face) face)
-                      (t (list face)))))
-    (not (seq-some (lambda (f)
-                     (memq f wordwise--skip-faces))
-                   faces))))
+  (not (seq-some (lambda (f)
+                   (memq f wordwise--skip-faces))
+                 (wordwise--face-symbols (get-text-property pos 'face)))))
+
+(defun wordwise--face-symbols (face)
+  "Return the face symbols named by FACE, a `face' property value.
+Follows `:inherit' in anonymous faces: Org gives example blocks and
+unfontified source blocks the face (:inherit (org-block))."
+  (cond ((null face) nil)
+        ((symbolp face) (list face))
+        ((keywordp (car-safe face))
+         (wordwise--face-symbols (plist-get face :inherit)))
+        ((consp face) (mapcan #'wordwise--face-symbols face))))
 
 (defun wordwise--code-like-p (word)
   "Return non-nil if WORD looks like a code identifier rather than prose."
